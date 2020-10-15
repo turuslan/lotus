@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/filecoin-project/lotus/dvm"
 	"reflect"
 	"sync/atomic"
 	"time"
@@ -219,6 +220,8 @@ type ApplyRet struct {
 
 func (vm *VM) send(ctx context.Context, msg *types.Message, parent *Runtime,
 	gasCharge *GasCharge, start time.Time) ([]byte, aerrors.ActorError, *Runtime) {
+	dvm.OnSend(msg.Method, msg.Nonce, &msg.Value, &msg.To, msg.Params)
+	defer dvm.UnIndent(dvm.Indent())
 
 	defer atomic.AddUint64(&StatSends, 1)
 
@@ -353,6 +356,11 @@ func (vm *VM) ApplyImplicitMessage(ctx context.Context, msg *types.Message) (*Ap
 	defer atomic.AddUint64(&StatApplied, 1)
 	ret, actorErr, rt := vm.send(ctx, msg, nil, nil, start)
 	rt.finilizeGasTracing()
+
+	if !aerrors.IsFatal(actorErr) {
+		dvm.OnReceipt(aerrors.RetCode(actorErr), rt.gasUsed, ret)
+	}
+
 	return &ApplyRet{
 		MessageReceipt: types.MessageReceipt{
 			ExitCode: aerrors.RetCode(actorErr),
@@ -366,7 +374,13 @@ func (vm *VM) ApplyImplicitMessage(ctx context.Context, msg *types.Message) (*Ap
 	}, actorErr
 }
 
-func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (*ApplyRet, error) {
+func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (_ret *ApplyRet, _err error) {
+	defer func() {
+		if _err == nil {
+			dvm.OnReceipt(_ret.ExitCode, _ret.GasUsed, _ret.Return)
+		}
+	}()
+
 	start := build.Clock.Now()
 	ctx, span := trace.StartSpan(ctx, "vm.ApplyMessage")
 	defer span.End()

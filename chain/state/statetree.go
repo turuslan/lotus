@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/lotus/dvm"
 
 	"github.com/ipfs/go-cid"
 	cbor "github.com/ipfs/go-ipld-cbor"
@@ -203,6 +205,13 @@ func LoadStateTree(cst cbor.IpldStore, c cid.Cid) (*StateTree, error) {
 }
 
 func (st *StateTree) SetActor(addr address.Address, act *types.Actor) error {
+	dvm.OnActor(st.Store, &addr, &act.Head, act.Nonce, &act.Balance, func() (*cid.Cid, uint64, *big.Int, bool) {
+		if a, e := st.GetActor(addr); e == nil {
+			return &a.Head, a.Nonce, &a.Balance, true
+		}
+		return nil, 0, nil, false
+	})
+
 	iaddr, err := st.LookupID(addr)
 	if err != nil {
 		return xerrors.Errorf("ID lookup failed: %w", err)
