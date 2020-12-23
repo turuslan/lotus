@@ -1393,7 +1393,7 @@ var stateWaitMsgCmd = &cli.Command{
 			return err
 		}
 
-		fmt.Printf("message was executed in tipset: %s\n", mw.TipSet.Cids())
+		fmt.Printf("message was executed in tipset: %s %s\n", mw.Height, mw.TipSet.Cids())
 		fmt.Printf("Exit Code: %d\n", mw.Receipt.ExitCode)
 		fmt.Printf("Gas Used: %d\n", mw.Receipt.GasUsed)
 		fmt.Printf("Return: %x\n", mw.Receipt.Return)

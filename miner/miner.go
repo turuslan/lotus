@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -418,9 +419,12 @@ func (m *Miner) mineOne(ctx context.Context, base *MiningBase) (*types.BlockMsg,
 
 	tSeed := build.Clock.Now()
 
-	postProof, err := m.epp.ComputeProof(ctx, mbi.Sectors, prand)
-	if err != nil {
-		return nil, xerrors.Errorf("failed to compute winning post proof: %w", err)
+	var postProof []proof2.PoStProof
+	if os.Getenv("NOWIN") != "1" {
+		postProof, err = m.epp.ComputeProof(ctx, mbi.Sectors, prand)
+		if err != nil {
+			return nil, xerrors.Errorf("failed to compute winning post proof: %w", err)
+		}
 	}
 
 	tProof := build.Clock.Now()

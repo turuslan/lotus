@@ -5,9 +5,6 @@
 package build
 
 import (
-	"math"
-	"os"
-
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/lotus/chain/actors/policy"
@@ -15,49 +12,42 @@ import (
 )
 
 var DrandSchedule = map[abi.ChainEpoch]DrandEnum{
-	0:                  DrandIncentinet,
-	UpgradeSmokeHeight: DrandMainnet,
+	0: DrandMainnet,
 }
 
-const UpgradeBreezeHeight = 41280
-const BreezeGasTampingDuration = 120
+const UpgradeBreezeHeight = -1
+const BreezeGasTampingDuration = 0
 
-const UpgradeSmokeHeight = 51000
+const UpgradeSmokeHeight = -2
 
-const UpgradeIgnitionHeight = 94000
-const UpgradeRefuelHeight = 130800
+const UpgradeIgnitionHeight = -3
+const UpgradeRefuelHeight = -4
 
-var UpgradeActorsV2Height = abi.ChainEpoch(138720)
+var UpgradeActorsV2Height = abi.ChainEpoch(3)
 
-const UpgradeTapeHeight = 140760
+const UpgradeTapeHeight = -5
 
 // This signals our tentative epoch for mainnet launch. Can make it later, but not earlier.
 // Miners, clients, developers, custodians all need time to prepare.
 // We still have upgrades and state changes to do, but can happen after signaling timing here.
-const UpgradeLiftoffHeight = 148888
+const UpgradeLiftoffHeight = -6
 
-const UpgradeKumquatHeight = 170000
+const UpgradeKumquatHeight = -7
 
-const UpgradeCalicoHeight = 265200
-const UpgradePersianHeight = UpgradeCalicoHeight + (builtin2.EpochsInHour * 60)
+const UpgradeCalicoHeight = -8
+const UpgradePersianHeight = -9
 
-const UpgradeOrangeHeight = 336458
+const UpgradeOrangeHeight = -10
 
 // 2020-12-22T02:00:00Z
-const UpgradeClausHeight = 343200
+const UpgradeClausHeight = -11
 
 func init() {
-	policy.SetConsensusMinerMinPower(abi.NewStoragePower(10 << 40))
+	policy.SetConsensusMinerMinPower(abi.NewStoragePower(2 << 30))
+	policy.SetSupportedProofTypes(abi.RegisteredSealProof_StackedDrg512MiBV1)
+	SetAddressNetwork(address.Testnet)
 
-	if os.Getenv("LOTUS_USE_TEST_ADDRESSES") != "1" {
-		SetAddressNetwork(address.Mainnet)
-	}
-
-	if os.Getenv("LOTUS_DISABLE_V2_ACTOR_MIGRATION") == "1" {
-		UpgradeActorsV2Height = math.MaxInt64
-	}
-
-	Devnet = false
+	Devnet = true
 }
 
 const BlockDelaySecs = uint64(builtin2.EpochDurationSeconds)
@@ -65,4 +55,4 @@ const BlockDelaySecs = uint64(builtin2.EpochDurationSeconds)
 const PropagationDelaySecs = uint64(6)
 
 // BootstrapPeerThreshold is the minimum number peers we need to track for a sync worker to start
-const BootstrapPeerThreshold = 4
+const BootstrapPeerThreshold = 1

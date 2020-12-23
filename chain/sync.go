@@ -980,6 +980,8 @@ func (syncer *Syncer) ValidateBlock(ctx context.Context, b *types.FullBlock, use
 }
 
 func (syncer *Syncer) VerifyWinningPoStProof(ctx context.Context, nv network.Version, h *types.BlockHeader, prevBeacon types.BeaconEntry, lbst cid.Cid, waddr address.Address) error {
+	if os.Getenv("NOWIN") == "1" && len(h.WinPoStProof) == 0 { return nil }
+
 	if build.InsecurePoStValidation {
 		if len(h.WinPoStProof) == 0 {
 			return xerrors.Errorf("[INSECURE-POST-VALIDATION] No winning post proof given")
