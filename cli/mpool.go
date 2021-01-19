@@ -184,7 +184,8 @@ var mpoolSub = &cli.Command{
 
 		for {
 			select {
-			case update := <-sub:
+			case update, ok := <-sub:
+				if !ok { return nil }
 				out, err := json.MarshalIndent(update, "", "  ")
 				if err != nil {
 					return err

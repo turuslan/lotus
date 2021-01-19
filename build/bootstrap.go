@@ -13,6 +13,10 @@ import (
 )
 
 func BuiltinBootstrap() ([]peer.AddrInfo, error) {
+	if os.Getenv("LOTUS_BOOTSTRAP") != "1" {
+		return nil, nil
+	}
+
 	if DisableBuiltinAssets {
 		return nil, nil
 	}
