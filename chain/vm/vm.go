@@ -38,7 +38,6 @@ import (
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/lib/blockstore"
 	bstore "github.com/filecoin-project/lotus/lib/blockstore"
-	"github.com/filecoin-project/lotus/lib/bufbstore"
 )
 
 const MaxCallDepth = 4096
@@ -202,7 +201,7 @@ type VM struct {
 	cstate         *state.StateTree
 	base           cid.Cid
 	cst            *cbor.BasicIpldStore
-	buf            *bufbstore.BufferedBS
+	buf            bstore.Blockstore
 	blockHeight    abi.ChainEpoch
 	areg           *ActorRegistry
 	rand           Rand
@@ -227,7 +226,7 @@ type VMOpts struct {
 }
 
 func NewVM(ctx context.Context, opts *VMOpts) (*VM, error) {
-	buf := bufbstore.NewBufferedBstore(opts.Bstore)
+	buf := opts.Bstore
 	cst := cbor.NewCborStore(buf)
 	state, err := state.LoadStateTree(cst, opts.StateBase)
 	if err != nil {
@@ -644,16 +643,9 @@ func (vm *VM) Flush(ctx context.Context) (cid.Cid, error) {
 	_, span := trace.StartSpan(ctx, "vm.Flush")
 	defer span.End()
 
-	from := vm.buf
-	to := vm.buf.Read()
-
 	root, err := vm.cstate.Flush(ctx)
 	if err != nil {
 		return cid.Undef, xerrors.Errorf("flushing vm: %w", err)
-	}
-
-	if err := Copy(context.WithValue(ctx, vmFlushKey{}, true), from, to, root); err != nil {
-		return cid.Undef, xerrors.Errorf("copying tree: %w", err)
 	}
 
 	return root, nil
