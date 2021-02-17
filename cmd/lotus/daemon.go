@@ -9,13 +9,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/filecoin-project/lotus/dvm"
+	"github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	"github.com/ipld/go-car"
+	"github.com/ipld/go-car/util"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"runtime/pprof"
 	"strings"
+	"sync"
 
 	paramfetch "github.com/filecoin-project/go-paramfetch"
 	metricsprom "github.com/ipfs/go-metrics-prometheus"
@@ -485,6 +490,24 @@ func ImportChain(r repo.Repo, fname string, snapshot bool) (err error) {
 
 func ap(e error) { if e != nil { panic(e) } }
 
+type HookBlockstore struct {
+	blockstore.Blockstore
+	Cids map[cid.Cid]bool
+	mutex sync.Mutex
+}
+
+func (bs *HookBlockstore) Get(c cid.Cid) (blocks.Block, error) {
+	if out, err := bs.Blockstore.Get(c); err != nil {
+		return nil, err
+	} else {
+		bs.mutex.Lock()
+		bs.Cids[c] = true
+		bs.mutex.Unlock()
+		return out, nil
+	}
+}
+
+
 var DvmCmd = &cli.Command{
 	Name:  "dvm",
 	Action: func(cctx *cli.Context) error {
@@ -494,7 +517,10 @@ var DvmCmd = &cli.Command{
 
 		lr, e := r.Lock(repo.FullNode); ap(e)
 		defer lr.Close() //nolint:errcheck
-		bs, e := lr.Blockstore(repo.BlockstoreChain); ap(e)
+		_bs, e := lr.Blockstore(repo.BlockstoreChain); ap(e)
+		bs := &HookBlockstore{}
+		bs.Blockstore = _bs
+		bs.Cids = make(map[cid.Cid]bool)
 		mds, e := lr.Datastore("/metadata"); ap(e)
 		j, e := journal.OpenFSJournal(lr, journal.EnvDisabledEvents()); ap(e)
 		cst := store.NewChainStore(bs, bs, mds, vm.Syscalls(ffiwrapper.ProofVerifier), j)
@@ -515,6 +541,7 @@ var DvmCmd = &cli.Command{
 
 		dvm.Logging = true
 		dvm.Logf("height %d", pts.Height())
+		fmt.Println("interpreting")
 		as, ar, e := stm.TipSetState(cctx.Context, pts)
 		if e != nil {
 			fmt.Println("interpret:", e)
@@ -524,6 +551,17 @@ var DvmCmd = &cli.Command{
 			fmt.Println("receipts")
 		} else {
 			fmt.Println("OK OK OK OK OK OK OK OK")
+		}
+		fmt.Printf("HOOK %d objects\n", len(bs.Cids))
+
+		cn := os.Getenv("DVM_CAR")
+		if len(cn) != 0 {
+			w, e := os.Create(cn); ap(e)
+			e = car.WriteHeader(&car.CarHeader{head.Cids(), 0}, w); ap(e)
+			for k := range bs.Cids {
+				v, e := _bs.Get(k); ap(e)
+				util.LdWrite(w, k.Bytes(), v.RawData())
+			}
 		}
 
 		return nil
