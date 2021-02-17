@@ -36,6 +36,7 @@ import (
 	"github.com/filecoin-project/lotus/chain/actors/builtin/reward"
 	"github.com/filecoin-project/lotus/chain/state"
 	"github.com/filecoin-project/lotus/chain/types"
+	"github.com/filecoin-project/lotus/dvm"
 	"github.com/filecoin-project/lotus/lib/blockstore"
 	bstore "github.com/filecoin-project/lotus/lib/blockstore"
 )
@@ -112,6 +113,8 @@ func (bs *gasChargingBlocks) Get(c cid.Cid) (block.Block, error) {
 
 func (bs *gasChargingBlocks) Put(blk block.Block) error {
 	bs.chargeGas(bs.pricelist.OnIpldPut(len(blk.RawData())))
+
+	dvm.OnIpldSet(blk.Cid(), blk.RawData())
 
 	if err := bs.under.Put(blk); err != nil {
 		return aerrors.Escalate(err, "failed to write data to disk")
@@ -264,6 +267,8 @@ type ApplyRet struct {
 
 func (vm *VM) send(ctx context.Context, msg *types.Message, parent *Runtime,
 	gasCharge *GasCharge, start time.Time) ([]byte, aerrors.ActorError, *Runtime) {
+	dvm.OnSend(msg.Method, msg.Nonce, &msg.Value, &msg.To, &msg.From, msg.Params)
+	defer dvm.UnIndent(dvm.Indent())
 
 	defer atomic.AddUint64(&StatSends, 1)
 
@@ -387,6 +392,11 @@ func (vm *VM) ApplyImplicitMessage(ctx context.Context, msg *types.Message) (*Ap
 	defer atomic.AddUint64(&StatApplied, 1)
 	ret, actorErr, rt := vm.send(ctx, msg, nil, nil, start)
 	rt.finilizeGasTracing()
+
+	if !aerrors.IsFatal(actorErr) {
+		dvm.OnReceipt(aerrors.RetCode(actorErr), rt.gasUsed, ret)
+	}
+
 	return &ApplyRet{
 		MessageReceipt: types.MessageReceipt{
 			ExitCode: aerrors.RetCode(actorErr),
@@ -400,7 +410,13 @@ func (vm *VM) ApplyImplicitMessage(ctx context.Context, msg *types.Message) (*Ap
 	}, actorErr
 }
 
-func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (*ApplyRet, error) {
+func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (_ret *ApplyRet, _err error) {
+	defer func() {
+		if _err == nil {
+			dvm.OnReceipt(_ret.ExitCode, _ret.GasUsed, _ret.Return)
+		}
+	}()
+
 	start := build.Clock.Now()
 	ctx, span := trace.StartSpan(ctx, "vm.ApplyMessage")
 	defer span.End()

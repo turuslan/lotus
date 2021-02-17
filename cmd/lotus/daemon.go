@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/filecoin-project/lotus/dvm"
+	"github.com/ipfs/go-cid"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -479,4 +481,51 @@ func ImportChain(r repo.Repo, fname string, snapshot bool) (err error) {
 	}
 
 	return nil
+}
+
+func ap(e error) { if e != nil { panic(e) } }
+
+var DvmCmd = &cli.Command{
+	Name:  "dvm",
+	Action: func(cctx *cli.Context) error {
+		r, e := repo.NewFS(os.Getenv("DVM_REPO")); ap(e)
+
+		e = r.Init(repo.FullNode); if e != repo.ErrRepoExists { ap(e) }
+
+		lr, e := r.Lock(repo.FullNode); ap(e)
+		defer lr.Close() //nolint:errcheck
+		bs, e := lr.Blockstore(repo.BlockstoreChain); ap(e)
+		mds, e := lr.Datastore("/metadata"); ap(e)
+		j, e := journal.OpenFSJournal(lr, journal.EnvDisabledEvents()); ap(e)
+		cst := store.NewChainStore(bs, bs, mds, vm.Syscalls(ffiwrapper.ProofVerifier), j)
+		stm := stmgr.NewStateManager(cst)
+
+		ptsk := func(a... string) types.TipSetKey {
+			var b []cid.Cid
+			for _, x := range a {
+				c, e := cid.Decode(x); ap(e)
+				b = append(b, c)
+			}
+			return types.NewTipSetKey(b...)
+		}
+		head, e := cst.LoadTipSet(ptsk("bafy2bzacecwut2cuu4qjui6x7amronlydo76xoqsdysiyf4uf6fb6fixgq5he")); ap(e)
+		cts := head
+		pts, e := cst.LoadTipSet(cts.Parents()); ap(e)
+		if pts.Height() != 504980 { panic(pts.Height()) }
+
+		dvm.Logging = true
+		dvm.Logf("height %d", pts.Height())
+		as, ar, e := stm.TipSetState(cctx.Context, pts)
+		if e != nil {
+			fmt.Println("interpret:", e)
+		} else if as != cts.ParentState() {
+			fmt.Println("state")
+		} else if ar != cts.ParentReceipts() {
+			fmt.Println("receipts")
+		} else {
+			fmt.Println("OK OK OK OK OK OK OK OK")
+		}
+
+		return nil
+	},
 }
