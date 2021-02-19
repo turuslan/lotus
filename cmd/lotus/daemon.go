@@ -8,12 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/filecoin-project/lotus/dvm"
-	"github.com/ipfs/go-block-format"
-	"github.com/ipfs/go-cid"
-	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	"github.com/ipld/go-car"
-	"github.com/ipld/go-car/util"
+	blocks "github.com/ipfs/go-block-format"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -21,6 +16,12 @@ import (
 	"runtime/pprof"
 	"strings"
 	"sync"
+
+	"github.com/filecoin-project/lotus/dvm"
+	"github.com/ipfs/go-cid"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	"github.com/ipld/go-car"
+	"github.com/ipld/go-car/util"
 
 	paramfetch "github.com/filecoin-project/go-paramfetch"
 	metricsprom "github.com/ipfs/go-metrics-prometheus"
@@ -493,34 +494,55 @@ func ap(e error) { if e != nil { panic(e) } }
 type HookBlockstore struct {
 	blockstore.Blockstore
 	Cids map[cid.Cid]bool
-	mutex sync.Mutex
+	M sync.Mutex
+	C chan cid.Cid
 }
 
 func (bs *HookBlockstore) Get(c cid.Cid) (blocks.Block, error) {
 	if out, err := bs.Blockstore.Get(c); err != nil {
 		return nil, err
 	} else {
-		bs.mutex.Lock()
-		bs.Cids[c] = true
-		bs.mutex.Unlock()
+		bs.C <- c
 		return out, nil
 	}
 }
-
 
 var DvmCmd = &cli.Command{
 	Name:  "dvm",
 	Action: func(cctx *cli.Context) error {
 		r, e := repo.NewFS(os.Getenv("DVM_REPO")); ap(e)
+		cn := os.Getenv("DVM_CAR")
 
 		e = r.Init(repo.FullNode); if e != repo.ErrRepoExists { ap(e) }
 
 		lr, e := r.Lock(repo.FullNode); ap(e)
 		defer lr.Close() //nolint:errcheck
 		_bs, e := lr.Blockstore(repo.BlockstoreChain); ap(e)
-		bs := &HookBlockstore{}
-		bs.Blockstore = _bs
-		bs.Cids = make(map[cid.Cid]bool)
+
+		var hs *HookBlockstore
+		var bs blockstore.Blockstore
+
+		if len(cn) != 0 {
+			hs = &HookBlockstore{}
+			hs.Blockstore = _bs
+			hs.Cids = make(map[cid.Cid]bool)
+			hs.C = make(chan cid.Cid)
+			go func() {
+				hs.M.Lock()
+				defer hs.M.Unlock()
+				for {
+					if c, h := <-hs.C; h {
+						hs.Cids[c] = true
+					} else {
+						break
+					}
+				}
+			}()
+			bs = hs
+		} else {
+			bs = _bs
+		}
+
 		mds, e := lr.Datastore("/metadata"); ap(e)
 		j, e := journal.OpenFSJournal(lr, journal.EnvDisabledEvents()); ap(e)
 		cst := store.NewChainStore(bs, bs, mds, vm.Syscalls(ffiwrapper.ProofVerifier), j)
@@ -534,10 +556,10 @@ var DvmCmd = &cli.Command{
 			}
 			return types.NewTipSetKey(b...)
 		}
-		head, e := cst.LoadTipSet(ptsk("bafy2bzacecwut2cuu4qjui6x7amronlydo76xoqsdysiyf4uf6fb6fixgq5he")); ap(e)
+		head, e := cst.LoadTipSet(ptsk("bafy2bzaceb4rlfq3un3f3hnso5iqnhudgt4nij3lzl55br57cp4q4cwj7q3gk")); ap(e)
 		cts := head
 		pts, e := cst.LoadTipSet(cts.Parents()); ap(e)
-		if pts.Height() != 504980 { panic(pts.Height()) }
+		if pts.Height() != 547141 { panic(pts.Height()) }
 
 		dvm.Logging = true
 		dvm.Logf("height %d", pts.Height())
@@ -552,13 +574,13 @@ var DvmCmd = &cli.Command{
 		} else {
 			fmt.Println("OK OK OK OK OK OK OK OK")
 		}
-		fmt.Printf("HOOK %d objects\n", len(bs.Cids))
 
-		cn := os.Getenv("DVM_CAR")
 		if len(cn) != 0 {
+			fmt.Printf("HOOK %d objects\n", len(hs.Cids))
+			close(hs.C); hs.M.Lock()
 			w, e := os.Create(cn); ap(e)
-			e = car.WriteHeader(&car.CarHeader{head.Cids(), 0}, w); ap(e)
-			for k := range bs.Cids {
+			e = car.WriteHeader(&car.CarHeader{head.Cids(), 1}, w); ap(e)
+			for k := range hs.Cids {
 				v, e := _bs.Get(k); ap(e)
 				util.LdWrite(w, k.Bytes(), v.RawData())
 			}
