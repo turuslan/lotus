@@ -68,6 +68,8 @@
   * [LogList](#LogList)
   * [LogSetLevel](#LogSetLevel)
 * [Market](#Market)
+  * [MarketAddBalance](#MarketAddBalance)
+  * [MarketGetReserved](#MarketGetReserved)
   * [MarketReleaseFunds](#MarketReleaseFunds)
   * [MarketReserveFunds](#MarketReserveFunds)
   * [MarketWithdraw](#MarketWithdraw)
@@ -97,6 +99,7 @@
   * [MsigCancel](#MsigCancel)
   * [MsigCreate](#MsigCreate)
   * [MsigGetAvailableBalance](#MsigGetAvailableBalance)
+  * [MsigGetPending](#MsigGetPending)
   * [MsigGetVested](#MsigGetVested)
   * [MsigGetVestingSchedule](#MsigGetVestingSchedule)
   * [MsigPropose](#MsigPropose)
@@ -175,6 +178,7 @@
   * [StateReadState](#StateReadState)
   * [StateReplay](#StateReplay)
   * [StateSearchMsg](#StateSearchMsg)
+  * [StateSearchMsgLimited](#StateSearchMsgLimited)
   * [StateSectorExpiration](#StateSectorExpiration)
   * [StateSectorGetInfo](#StateSectorGetInfo)
   * [StateSectorPartition](#StateSectorPartition)
@@ -250,7 +254,7 @@ Response:
 ```json
 {
   "Version": "string value",
-  "APIVersion": 65536,
+  "APIVersion": 65792,
   "BlockDelay": 42
 }
 ```
@@ -1024,7 +1028,8 @@ Response:
       "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
     },
     "PieceCid": null,
-    "PieceSize": 1024
+    "PieceSize": 1024,
+    "RawBlockSize": 42
   },
   "PieceCID": {
     "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
@@ -1094,7 +1099,8 @@ Response:
       "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
     },
     "PieceCid": null,
-    "PieceSize": 1024
+    "PieceSize": 1024,
+    "RawBlockSize": 42
   },
   "PieceCID": {
     "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
@@ -1412,7 +1418,8 @@ Inputs:
         "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
       },
       "PieceCid": null,
-      "PieceSize": 1024
+      "PieceSize": 1024,
+      "RawBlockSize": 42
     },
     "Wallet": "f01234",
     "Miner": "f01234",
@@ -1652,6 +1659,43 @@ Response: `{}`
 
 ## Market
 
+
+### MarketAddBalance
+MarketAddBalance adds funds to the market actor
+
+
+Perms: sign
+
+Inputs:
+```json
+[
+  "f01234",
+  "f01234",
+  "0"
+]
+```
+
+Response:
+```json
+{
+  "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
+}
+```
+
+### MarketGetReserved
+MarketGetReserved gets the amount of funds that are currently reserved for the address
+
+
+Perms: sign
+
+Inputs:
+```json
+[
+  "f01234"
+]
+```
+
+Response: `"0"`
 
 ### MarketReleaseFunds
 MarketReleaseFunds releases funds reserved by MarketReserveFunds
@@ -2404,6 +2448,31 @@ Inputs:
 ```
 
 Response: `"0"`
+
+### MsigGetPending
+MsigGetPending returns pending transactions for the given multisig
+wallet. Once pending transactions are fully approved, they will no longer
+appear here.
+
+
+Perms: read
+
+Inputs:
+```json
+[
+  "f01234",
+  [
+    {
+      "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
+    },
+    {
+      "/": "bafy2bzacebp3shtrn43k7g3unredz7fxn4gj533d3o43tqn2p2ipxxhrvchve"
+    }
+  ]
+]
+```
+
+Response: `null`
 
 ### MsigGetVested
 MsigGetVested returns the amount of FIL that vested in a multisig in a certain period.
@@ -3243,7 +3312,7 @@ Response:
 
 ## State
 The State methods are used to query, inspect, and interact with chain state.
-Most methods take a TipSetKey as a parameter. The state looked up is the state at that tipset.
+Most methods take a TipSetKey as a parameter. The state looked up is the parent state of the tipset.
 A nil TipSetKey can be provided as a param, this will cause the heaviest tipset in the chain to be used.
 
 
@@ -3295,6 +3364,10 @@ Response: `null`
 
 ### StateCall
 StateCall runs the given message and returns its result without any persisted changes.
+
+StateCall applies the message to the tipset's parent state. The
+message is not applied on-top-of the messages in the passed-in
+tipset.
 
 
 Perms: read
@@ -3988,7 +4061,7 @@ Response:
   "WorkerChangeEpoch": 10101,
   "PeerId": "12D3KooWGzxzKZYveHXtpG6AsrUJBcWxHBFS2HsEoGTxrMLvKXtf",
   "Multiaddrs": null,
-  "SealProofType": 8,
+  "WindowPoStProofType": 8,
   "SectorSize": 34359738368,
   "WindowPoStPartitionSectors": 42,
   "ConsensusFaultElapsed": 10101
@@ -4308,7 +4381,7 @@ Inputs:
 ]
 ```
 
-Response: `8`
+Response: `9`
 
 ### StateReadState
 StateReadState returns the indicated actor's state.
@@ -4335,6 +4408,9 @@ Response:
 ```json
 {
   "Balance": "0",
+  "Code": {
+    "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
+  },
   "State": {}
 }
 ```
@@ -4444,6 +4520,46 @@ Inputs:
   {
     "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
   }
+]
+```
+
+Response:
+```json
+{
+  "Message": {
+    "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
+  },
+  "Receipt": {
+    "ExitCode": 0,
+    "Return": "Ynl0ZSBhcnJheQ==",
+    "GasUsed": 9
+  },
+  "ReturnDec": {},
+  "TipSet": [
+    {
+      "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
+    },
+    {
+      "/": "bafy2bzacebp3shtrn43k7g3unredz7fxn4gj533d3o43tqn2p2ipxxhrvchve"
+    }
+  ],
+  "Height": 10101
+}
+```
+
+### StateSearchMsgLimited
+StateSearchMsgLimited looks back up to limit epochs in the chain for a message, and returns its receipt and the tipset where it was executed
+
+
+Perms: read
+
+Inputs:
+```json
+[
+  {
+    "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
+  },
+  10101
 ]
 ```
 

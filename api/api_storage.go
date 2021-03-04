@@ -15,6 +15,7 @@ import (
 	"github.com/filecoin-project/go-fil-markets/retrievalmarket"
 	"github.com/filecoin-project/go-fil-markets/storagemarket"
 	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/specs-actors/v2/actors/builtin/market"
 	"github.com/filecoin-project/specs-storage/storage"
 
 	"github.com/filecoin-project/lotus/chain/types"
@@ -65,7 +66,17 @@ type StorageMiner interface {
 	// SectorGetExpectedSealDuration gets the expected time for a sector to seal
 	SectorGetExpectedSealDuration(context.Context) (time.Duration, error)
 	SectorsUpdate(context.Context, abi.SectorNumber, SectorState) error
+	// SectorRemove removes the sector from storage. It doesn't terminate it on-chain, which can
+	// be done with SectorTerminate. Removing and not terminating live sectors will cause additional penalties.
 	SectorRemove(context.Context, abi.SectorNumber) error
+	// SectorTerminate terminates the sector on-chain (adding it to a termination batch first), then
+	// automatically removes it from storage
+	SectorTerminate(context.Context, abi.SectorNumber) error
+	// SectorTerminateFlush immediately sends a terminate message with sectors batched for termination.
+	// Returns null if message wasn't sent
+	SectorTerminateFlush(ctx context.Context) (*cid.Cid, error)
+	// SectorTerminatePending returns a list of pending sector terminations to be sent in the next batch message
+	SectorTerminatePending(ctx context.Context) ([]abi.SectorID, error)
 	SectorMarkForUpgrade(ctx context.Context, id abi.SectorNumber) error
 
 	StorageList(ctx context.Context) (map[stores.ID][]stores.Decl, error)
@@ -95,10 +106,12 @@ type StorageMiner interface {
 	MarketGetRetrievalAsk(ctx context.Context) (*retrievalmarket.Ask, error)
 	MarketListDataTransfers(ctx context.Context) ([]DataTransferChannel, error)
 	MarketDataTransferUpdates(ctx context.Context) (<-chan DataTransferChannel, error)
-	// MinerRestartDataTransfer attempts to restart a data transfer with the given transfer ID and other peer
+	// MarketRestartDataTransfer attempts to restart a data transfer with the given transfer ID and other peer
 	MarketRestartDataTransfer(ctx context.Context, transferID datatransfer.TransferID, otherPeer peer.ID, isInitiator bool) error
-	// ClientCancelDataTransfer cancels a data transfer with the given transfer ID and other peer
+	// MarketCancelDataTransfer cancels a data transfer with the given transfer ID and other peer
 	MarketCancelDataTransfer(ctx context.Context, transferID datatransfer.TransferID, otherPeer peer.ID, isInitiator bool) error
+	MarketPendingDeals(ctx context.Context) (PendingDealInfo, error)
+	MarketPublishPendingDeals(ctx context.Context) error
 
 	DealsImportData(ctx context.Context, dealPropCid cid.Cid, file string) error
 	DealsList(ctx context.Context) ([]MarketDeal, error)
@@ -217,9 +230,20 @@ const (
 	PreCommitAddr AddrUse = iota
 	CommitAddr
 	PoStAddr
+
+	TerminateSectorsAddr
 )
 
 type AddressConfig struct {
 	PreCommitControl []address.Address
 	CommitControl    []address.Address
+	TerminateControl []address.Address
+}
+
+// PendingDealInfo has info about pending deals and when they are due to be
+// published
+type PendingDealInfo struct {
+	Deals              []market.ClientDealProposal
+	PublishPeriodStart time.Time
+	PublishPeriod      time.Duration
 }

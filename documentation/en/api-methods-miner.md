@@ -48,6 +48,8 @@
   * [MarketListDeals](#MarketListDeals)
   * [MarketListIncompleteDeals](#MarketListIncompleteDeals)
   * [MarketListRetrievalDeals](#MarketListRetrievalDeals)
+  * [MarketPendingDeals](#MarketPendingDeals)
+  * [MarketPublishPendingDeals](#MarketPublishPendingDeals)
   * [MarketRestartDataTransfer](#MarketRestartDataTransfer)
   * [MarketSetAsk](#MarketSetAsk)
   * [MarketSetRetrievalAsk](#MarketSetRetrievalAsk)
@@ -99,6 +101,9 @@
   * [SectorSetExpectedSealDuration](#SectorSetExpectedSealDuration)
   * [SectorSetSealDelay](#SectorSetSealDelay)
   * [SectorStartSealing](#SectorStartSealing)
+  * [SectorTerminate](#SectorTerminate)
+  * [SectorTerminateFlush](#SectorTerminateFlush)
+  * [SectorTerminatePending](#SectorTerminatePending)
 * [Sectors](#Sectors)
   * [SectorsList](#SectorsList)
   * [SectorsListInStates](#SectorsListInStates)
@@ -165,7 +170,7 @@ Response:
 ```json
 {
   "Version": "string value",
-  "APIVersion": 65536,
+  "APIVersion": 65792,
   "BlockDelay": 42
 }
 ```
@@ -193,7 +198,8 @@ Response:
 ```json
 {
   "PreCommitControl": null,
-  "CommitControl": null
+  "CommitControl": null,
+  "TerminateControl": null
 }
 ```
 
@@ -520,10 +526,10 @@ Response: `{}`
 
 
 ### MarketCancelDataTransfer
-ClientCancelDataTransfer cancels a data transfer with the given transfer ID and other peer
+MarketCancelDataTransfer cancels a data transfer with the given transfer ID and other peer
 
 
-Perms: read
+Perms: write
 
 Inputs:
 ```json
@@ -637,7 +643,8 @@ Response:
       "/": "bafy2bzacea3wsdh6y3a36tb3skempjoxqpuyompjbmfeyf34fi3uy6uue42v4"
     },
     "PieceCid": null,
-    "PieceSize": 1024
+    "PieceSize": 1024,
+    "RawBlockSize": 42
   },
   "AvailableForRetrieval": true,
   "DealID": 5432,
@@ -721,11 +728,36 @@ Inputs: `null`
 
 Response: `null`
 
+### MarketPendingDeals
+There are not yet any comments for this method.
+
+Perms: write
+
+Inputs: `null`
+
+Response:
+```json
+{
+  "Deals": null,
+  "PublishPeriodStart": "0001-01-01T00:00:00Z",
+  "PublishPeriod": 60000000000
+}
+```
+
+### MarketPublishPendingDeals
+There are not yet any comments for this method.
+
+Perms: admin
+
+Inputs: `null`
+
+Response: `{}`
+
 ### MarketRestartDataTransfer
-MinerRestartDataTransfer attempts to restart a data transfer with the given transfer ID and other peer
+MarketRestartDataTransfer attempts to restart a data transfer with the given transfer ID and other peer
 
 
-Perms: read
+Perms: write
 
 Inputs:
 ```json
@@ -1475,7 +1507,9 @@ Inputs:
 Response: `{}`
 
 ### SectorRemove
-There are not yet any comments for this method.
+SectorRemove removes the sector from storage. It doesn't terminate it on-chain, which can
+be done with SectorTerminate. Removing and not terminating live sectors will cause additional penalties.
+
 
 Perms: admin
 
@@ -1534,6 +1568,43 @@ Inputs:
 ```
 
 Response: `{}`
+
+### SectorTerminate
+SectorTerminate terminates the sector on-chain (adding it to a termination batch first), then
+automatically removes it from storage
+
+
+Perms: admin
+
+Inputs:
+```json
+[
+  9
+]
+```
+
+Response: `{}`
+
+### SectorTerminateFlush
+SectorTerminateFlush immediately sends a terminate message with sectors batched for termination.
+Returns null if message wasn't sent
+
+
+Perms: admin
+
+Inputs: `null`
+
+Response: `null`
+
+### SectorTerminatePending
+SectorTerminatePending returns a list of pending sector terminations to be sent in the next batch message
+
+
+Perms: admin
+
+Inputs: `null`
+
+Response: `null`
 
 ## Sectors
 

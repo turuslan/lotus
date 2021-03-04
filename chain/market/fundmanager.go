@@ -2,6 +2,7 @@ package market
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/filecoin-project/go-address"
@@ -129,6 +130,11 @@ func (fm *FundManager) Withdraw(ctx context.Context, wallet, addr address.Addres
 	return fm.getFundedAddress(addr).withdraw(ctx, wallet, amt)
 }
 
+// GetReserved returns the amount that is currently reserved for the address
+func (fm *FundManager) GetReserved(addr address.Address) abi.TokenAmount {
+	return fm.getFundedAddress(addr).getReserved()
+}
+
 // FundedAddressState keeps track of the state of an address with funds in the
 // datastore
 type FundedAddressState struct {
@@ -147,7 +153,7 @@ type fundedAddress struct {
 	env *fundManagerEnvironment
 	str *Store
 
-	lk    sync.Mutex
+	lk    sync.RWMutex
 	state *FundedAddressState
 
 	// Note: These request queues are ephemeral, they are not saved to store
@@ -181,6 +187,13 @@ func (a *fundedAddress) start() {
 		a.debugf("restart: wait for %s", a.state.MsgCid)
 		a.startWaitForResults(*a.state.MsgCid)
 	}
+}
+
+func (a *fundedAddress) getReserved() abi.TokenAmount {
+	a.lk.RLock()
+	defer a.lk.RUnlock()
+
+	return a.state.AmtReserved
 }
 
 func (a *fundedAddress) reserve(ctx context.Context, wallet address.Address, amt abi.TokenAmount) (cid.Cid, error) {
@@ -311,7 +324,7 @@ func (a *fundedAddress) saveState() {
 	// Not much we can do if saving to the datastore fails, just log
 	err := a.str.save(a.state)
 	if err != nil {
-		log.Errorf("saving state to store for addr %s: %w", a.state.Addr, err)
+		log.Errorf("saving state to store for addr %s: %v", a.state.Addr, err)
 	}
 }
 
@@ -501,7 +514,13 @@ func (a *fundedAddress) processWithdrawals(withdrawals []*fundRequest) (msgCid c
 		// request with an error
 		newWithdrawalAmt := types.BigAdd(withdrawalAmt, amt)
 		if newWithdrawalAmt.GreaterThan(netAvail) {
-			err := xerrors.Errorf("insufficient funds for withdrawal of %d", amt)
+			msg := fmt.Sprintf("insufficient funds for withdrawal of %s: ", types.FIL(amt))
+			msg += fmt.Sprintf("net available (%s) = available (%s) - reserved (%s)",
+				types.FIL(types.BigSub(netAvail, withdrawalAmt)), types.FIL(avail), types.FIL(a.state.AmtReserved))
+			if !withdrawalAmt.IsZero() {
+				msg += fmt.Sprintf(" - queued withdrawals (%s)", types.FIL(withdrawalAmt))
+			}
+			err := xerrors.Errorf(msg)
 			a.debugf("%s", err)
 			req.Complete(cid.Undef, err)
 			continue
@@ -560,7 +579,7 @@ func (a *fundedAddress) startWaitForResults(msgCid cid.Cid) {
 		if err != nil {
 			// We don't really care about the results here, we're just waiting
 			// so as to only process one on-chain message at a time
-			log.Errorf("waiting for results of message %s for addr %s: %w", msgCid, a.state.Addr, err)
+			log.Errorf("waiting for results of message %s for addr %s: %v", msgCid, a.state.Addr, err)
 		}
 
 		a.lk.Lock()
