@@ -2,6 +2,7 @@ package build
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/filecoin-project/lotus/lib/addrutil"
@@ -11,6 +12,10 @@ import (
 )
 
 func BuiltinBootstrap() ([]peer.AddrInfo, error) {
+	if os.Getenv("BOOT") != "1" {
+		return nil, nil
+	}
+
 	if DisableBuiltinAssets {
 		return nil, nil
 	}
