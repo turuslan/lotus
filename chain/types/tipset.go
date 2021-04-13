@@ -222,6 +222,10 @@ func (ts *TipSet) ParentState() cid.Cid {
 	return ts.blks[0].ParentStateRoot
 }
 
+func (ts *TipSet) ParentReceipts() cid.Cid {
+	return ts.blks[0].ParentMessageReceipts
+}
+
 func (ts *TipSet) ParentWeight() BigInt {
 	return ts.blks[0].ParentWeight
 }

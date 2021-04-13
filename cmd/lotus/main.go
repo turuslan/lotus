@@ -24,6 +24,7 @@ func main() {
 	local := []*cli.Command{
 		DaemonCmd,
 		backupCmd,
+		CcDvmCmd,
 	}
 	if AdvanceBlockCmd != nil {
 		local = append(local, AdvanceBlockCmd)
