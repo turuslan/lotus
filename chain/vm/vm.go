@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/filecoin-project/lotus/dvm"
 	"reflect"
 	"sync/atomic"
 	"time"
@@ -115,6 +116,8 @@ func (bs *gasChargingBlocks) Get(c cid.Cid) (block.Block, error) {
 
 func (bs *gasChargingBlocks) Put(blk block.Block) error {
 	bs.chargeGas(bs.pricelist.OnIpldPut(len(blk.RawData())))
+
+	dvm.OnIpldSet(blk.Cid(), blk.RawData())
 
 	if err := bs.under.Put(blk); err != nil {
 		return aerrors.Escalate(err, "failed to write data to disk")
@@ -271,6 +274,9 @@ func (vm *VM) send(ctx context.Context, msg *types.Message, parent *Runtime,
 	gasCharge *GasCharge, start time.Time) ([]byte, aerrors.ActorError, *Runtime) {
 	defer atomic.AddUint64(&StatSends, 1)
 
+	dvm.OnSend(msg.Method, msg.Nonce, &msg.Value, &msg.To, &msg.From, msg.Params)
+	defer dvm.UnIndent(dvm.Indent())
+
 	st := vm.cstate
 
 	rt := vm.makeRuntime(ctx, msg, parent)
@@ -325,6 +331,8 @@ func (vm *VM) send(ctx context.Context, msg *types.Message, parent *Runtime,
 				return nil, aerrors.Escalate(err, "getting actor")
 			}
 		}
+
+		dvm.SendTo(toActor.Code)
 
 		if aerr := rt.chargeGasSafe(rt.Pricelist().OnMethodInvocation(msg.Value, msg.Method)); aerr != nil {
 			return nil, aerrors.Wrap(aerr, "not enough gas for method invocation")
@@ -391,6 +399,11 @@ func (vm *VM) ApplyImplicitMessage(ctx context.Context, msg *types.Message) (*Ap
 	defer atomic.AddUint64(&StatApplied, 1)
 	ret, actorErr, rt := vm.send(ctx, msg, nil, nil, start)
 	rt.finilizeGasTracing()
+
+	if !aerrors.IsFatal(actorErr) {
+		dvm.OnReceipt(aerrors.RetCode(actorErr), 0, ret)
+	}
+
 	return &ApplyRet{
 		MessageReceipt: types.MessageReceipt{
 			ExitCode: aerrors.RetCode(actorErr),
@@ -404,7 +417,13 @@ func (vm *VM) ApplyImplicitMessage(ctx context.Context, msg *types.Message) (*Ap
 	}, actorErr
 }
 
-func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (*ApplyRet, error) {
+func (vm *VM) ApplyMessage(ctx context.Context, cmsg types.ChainMsg) (_ret *ApplyRet, _err error) {
+	defer func() {
+		if _err == nil {
+			dvm.OnReceipt(_ret.ExitCode, _ret.GasUsed, _ret.Return)
+		}
+	}()
+
 	start := build.Clock.Now()
 	ctx, span := trace.StartSpan(ctx, "vm.ApplyMessage")
 	defer span.End()

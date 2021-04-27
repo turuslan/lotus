@@ -11,6 +11,7 @@ import (
 	"github.com/filecoin-project/lotus/chain/store"
 	"github.com/filecoin-project/lotus/chain/types"
 	"github.com/filecoin-project/lotus/chain/vm"
+	"github.com/filecoin-project/lotus/dvm"
 	"github.com/filecoin-project/lotus/extern/sector-storage/ffiwrapper"
 	"github.com/filecoin-project/lotus/journal"
 	"github.com/filecoin-project/lotus/node/repo"
@@ -145,6 +146,7 @@ var CcDvmCmd = &cli.Command{
 		pts, e := cst.LoadTipSet(cts.Parents()); ap(e)
 
 		fmt.Printf("%s interpret %d(^%d)\n", tag, pts.Height(), cts.Height())
+		dvm.Logging = dvm.Logger != nil
 		as, ar, e := stm.TipSetState(cctx.Context, pts)
 		if e != nil {
 			fmt.Printf("%s %s: %s", tag, color.RedString("interpret"), e)

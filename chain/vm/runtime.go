@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/filecoin-project/lotus/dvm"
 	gruntime "runtime"
 	"time"
 
@@ -378,6 +379,8 @@ func (rt *Runtime) Send(to address.Address, method abi.MethodNum, m cbor.Marshal
 	}
 	_ = rt.chargeGasSafe(gasOnActorExec)
 
+	dvm.OnReceipt(aerrors.RetCode(err), rt.gasUsed, ret)
+
 	if err := out.UnmarshalCBOR(bytes.NewReader(ret)); err != nil {
 		rt.Abortf(exitcode.ErrSerialization, "failed to unmarshal return value: %s", err)
 	}
@@ -532,6 +535,9 @@ func (rt *Runtime) chargeGasFunc(skip int) func(GasCharge) {
 
 func (rt *Runtime) chargeGasInternal(gas GasCharge, skip int) aerrors.ActorError {
 	toUse := gas.Total()
+
+	dvm.OnCharge(toUse)
+
 	if EnableGasTracing {
 		var callers [10]uintptr
 
