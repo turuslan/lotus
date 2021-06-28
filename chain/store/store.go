@@ -1603,7 +1603,7 @@ func (cs *ChainStore) Export(ctx context.Context, ts *types.TipSet, inclRecentRo
 	}
 
 	unionBs := bstore.Union(cs.stateBlockstore, cs.chainBlockstore)
-	return cs.WalkSnapshot(ctx, ts, inclRecentRoots, skipOldMsgs, true, func(c cid.Cid) error {
+	return cs.WalkSnapshot(ctx, ts, inclRecentRoots, skipOldMsgs, false, func(c cid.Cid) error {
 		blk, err := unionBs.Get(c)
 		if err != nil {
 			return xerrors.Errorf("writing object to car, bs.Get: %w", err)
